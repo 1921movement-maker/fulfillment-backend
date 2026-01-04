@@ -95,6 +95,50 @@ app.get("/orders", async (request, reply) => {
   }
 });
 
+// --------------------
+// Batches
+// --------------------
+
+// Create a new batch
+app.post("/batches", async (request, reply) => {
+  const { name } = request.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO batches (name)
+       VALUES ($1)
+       RETURNING *`,
+      [name]
+    );
+
+    return reply.send({ batch: result.rows[0] });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to create batch" });
+  }
+});
+// Assign orders to a batch
+app.post("/batches/:batchId/orders", async (request, reply) => {
+  const { batchId } = request.params;
+  const { orderIds } = request.body; // array of order IDs
+
+  try {
+    await pool.query(
+      `
+      UPDATE orders
+      SET batch_id = $1
+      WHERE id = ANY($2::int[])
+      `,
+      [batchId, orderIds]
+    );
+
+    return reply.send({ success: true });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to assign orders to batch" });
+  }
+});
+
 
 // Start server
 app.listen({
