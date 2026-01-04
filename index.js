@@ -139,6 +139,55 @@ app.post("/batches/:batchId/orders", async (request, reply) => {
   }
 });
 
+// Get all batches with order counts
+app.get("/batches", async (request, reply) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        b.id,
+        b.name,
+        COUNT(o.id) AS order_count
+      FROM batches b
+      LEFT JOIN orders o ON o.batch_id = b.id
+      GROUP BY b.id
+      ORDER BY b.id DESC
+    `);
+
+    return reply.send({ batches: result.rows });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch batches" });
+  }
+});
+
+// Get orders in a batch (pick list)
+app.get("/batches/:batchId/orders", async (request, reply) => {
+  const { batchId } = request.params;
+
+  try {
+    const result = await pool.query(`
+      SELECT
+        o.id,
+        o.order_number,
+        o.customer_name,
+        o.recipient_name,
+        o.status,
+        SUM(oi.quantity) AS total_items
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.batch_id = $1
+      GROUP BY o.id
+      ORDER BY o.id
+    `, [batchId]);
+
+    return reply.send({ orders: result.rows });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch batch orders" });
+  }
+});
+
+
 
 // Start server
 app.listen({
