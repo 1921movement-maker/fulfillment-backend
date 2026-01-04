@@ -48,6 +48,27 @@ app.get("/orders", async (request, reply) => {
   }
 });
 
+app.get("/orders/stats", async (request, reply) => {
+  try {
+    const result = await pool.query(`
+      SELECT status, COUNT(*) as count
+      FROM orders
+      GROUP BY status
+    `);
+
+    const stats = result.rows.reduce((acc, row) => {
+      acc[row.status] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+
+    return reply.send({ stats });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch order stats" });
+  }
+});
+
+
 // Start server
 app.listen({
   port: process.env.PORT || 3000,
