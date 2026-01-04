@@ -1,0 +1,8 @@
+{
+  "name": "fulfillment-backend",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
+
