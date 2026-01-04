@@ -1,18 +1,16 @@
 import Fastify from "fastify";
 import pkg from "pg";
 
-
 const { Pool } = pkg;
 
 const app = Fastify({ logger: true });
 
-// Connect to Postgres using Railway env var
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
-// Test route
+// Health check
 app.get("/health", async () => {
   const result = await pool.query("SELECT 1");
   return {
@@ -21,8 +19,38 @@ app.get("/health", async () => {
   };
 });
 
+// Orders list
+app.get("/orders", async (request, reply) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        o.id,
+        o.order_number,
+        o.order_date,
+        o.customer_name,
+        o.recipient_name,
+        o.order_total,
+        o.status,
+        b.name AS batch_name,
+        COUNT(oi.id)::int AS item_count,
+        COALESCE(SUM(oi.quantity), 0)::int AS total_quantity
+      FROM orders o
+      LEFT JOIN batches b ON o.batch_id = b.id
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      GROUP BY o.id, b.name
+      ORDER BY o.order_date DESC;
+    `);
+
+    return reply.send({ orders: result.rows });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch orders" });
+  }
+});
+
 // Start server
 app.listen({
   port: process.env.PORT || 3000,
   host: "0.0.0.0",
 });
+
