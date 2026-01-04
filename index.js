@@ -187,6 +187,36 @@ app.get("/batches/:batchId/orders", async (request, reply) => {
   }
 });
 
+// --------------------
+// Pick List (Aggregated by SKU)
+// --------------------
+
+app.get("/batches/:batchId/pick-list", async (request, reply) => {
+  const { batchId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        oi.sku,
+        oi.product_name,
+        SUM(oi.quantity)::int AS total_quantity
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.batch_id = $1
+      GROUP BY oi.sku, oi.product_name
+      ORDER BY oi.product_name;
+      `,
+      [batchId]
+    );
+
+    return reply.send({ pick_list: result.rows });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to generate pick list" });
+  }
+});
+
 
 
 // Start server
