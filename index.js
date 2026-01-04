@@ -1,6 +1,8 @@
 import Fastify from "fastify";
 import pkg from "pg";
 
+console.log("DATABASE_URL exists:", !!process.env.DATABASE_URL);
+
 const { Pool } = pkg;
 
 const app = Fastify({ logger: true });
