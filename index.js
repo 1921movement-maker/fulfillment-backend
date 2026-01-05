@@ -536,6 +536,98 @@ app.get("/orders/:orderId/packing-slip/pdf", async (request, reply) => {
   }
 });
 
+// ==============================
+// BATCH PACKING SLIPS (PDF)
+// ==============================
+import PDFDocument from "pdfkit";
+
+app.get("/batches/:batchId/packing-slips/pdf", async (request, reply) => {
+  const { batchId } = request.params;
+
+  try {
+    // 1. Get all orders + items in this batch
+    const result = await pool.query(
+      `
+      SELECT
+        o.id AS order_id,
+        o.order_number,
+        o.customer_name,
+        o.recipient_name,
+        oi.product_name,
+        oi.quantity
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.batch_id = $1
+      ORDER BY o.id, oi.product_name
+      `,
+      [batchId]
+    );
+
+    if (result.rows.length === 0) {
+      reply.code(404);
+      return { error: "No orders found for this batch" };
+    }
+
+    // 2. Prepare PDF response
+    reply.raw.setHeader("Content-Type", "application/pdf");
+    reply.raw.setHeader(
+      "Content-Disposition",
+      `attachment; filename=batch-${batchId}-packing-slips.pdf`
+    );
+
+    const doc = new PDFDocument({ margin: 40 });
+    doc.pipe(reply.raw);
+
+    // 3. Group rows by order
+    const ordersMap = {};
+    result.rows.forEach(row => {
+      if (!ordersMap[row.order_id]) {
+        ordersMap[row.order_id] = {
+          order_number: row.order_number,
+          customer_name: row.customer_name,
+          recipient_name: row.recipient_name,
+          items: []
+        };
+      }
+
+      ordersMap[row.order_id].items.push({
+        product_name: row.product_name,
+        quantity: row.quantity
+      });
+    });
+
+    const orders = Object.values(ordersMap);
+
+    // 4. Render each order as a page
+    orders.forEach((order, index) => {
+      if (index > 0) doc.addPage();
+
+      doc.fontSize(18).text("Packing Slip", { underline: true });
+      doc.moveDown();
+
+      doc.fontSize(12);
+      doc.text(`Order #: ${order.order_number}`);
+      doc.text(`Customer: ${order.customer_name}`);
+      doc.text(`Ship To: ${order.recipient_name}`);
+      doc.moveDown();
+
+      doc.text("Items:");
+      doc.moveDown();
+
+      order.items.forEach(item => {
+        doc.text(`${item.product_name} — Qty: ${item.quantity}`);
+      });
+    });
+
+    doc.end();
+    return reply;
+  } catch (err) {
+    request.log.error(err);
+    reply.code(500);
+    return { error: "Failed to generate batch packing slips PDF" };
+  }
+});
+
 
 
 
