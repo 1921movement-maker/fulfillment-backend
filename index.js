@@ -397,6 +397,77 @@ app.get("/orders/:orderId/packing-slip", async (request, reply) => {
   }
 });
 
+// ==============================
+// BATCH PACKING SLIPS
+// ==============================
+app.get("/batches/:batchId/packing-slips", async (request, reply) => {
+  const { batchId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        b.id AS batch_id,
+        b.name AS batch_name,
+        o.id AS order_id,
+        o.order_number,
+        o.order_date,
+        o.customer_name,
+        o.recipient_name,
+        o.order_total,
+        o.status,
+        oi.sku,
+        oi.product_name,
+        oi.quantity
+      FROM batches b
+      JOIN orders o ON o.batch_id = b.id
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE b.id = $1
+      ORDER BY o.id, oi.product_name;
+      `,
+      [batchId]
+    );
+
+    if (result.rows.length === 0) {
+      return reply.code(404).send({ error: "Batch not found or empty" });
+    }
+
+    // Group rows into packing slips
+    const packingSlips = {};
+
+    for (const row of result.rows) {
+      if (!packingSlips[row.order_id]) {
+        packingSlips[row.order_id] = {
+          order_id: row.order_id,
+          order_number: row.order_number,
+          order_date: row.order_date,
+          customer_name: row.customer_name,
+          recipient_name: row.recipient_name,
+          order_total: row.order_total,
+          status: row.status,
+          batch_name: row.batch_name,
+          items: [],
+        };
+      }
+
+      packingSlips[row.order_id].items.push({
+        sku: row.sku,
+        product_name: row.product_name,
+        quantity: row.quantity,
+      });
+    }
+
+    return reply.send({
+      batch_id: batchId,
+      batch_name: result.rows[0].batch_name,
+      packing_slips: Object.values(packingSlips),
+    });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to generate batch packing slips" });
+  }
+});
+
 
 // Start server
 app.listen({
