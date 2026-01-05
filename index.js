@@ -468,6 +468,79 @@ app.get("/batches/:batchId/packing-slips", async (request, reply) => {
   }
 });
 
+// ==============================
+// ORDER PACKING SLIP (PDF)
+// ==============================
+import PDFDocument from "pdfkit";
+
+app.get("/orders/:orderId/packing-slip/pdf", async (request, reply) => {
+  const { orderId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        o.order_number,
+        o.order_date,
+        o.customer_name,
+        o.recipient_name,
+        o.status,
+        oi.sku,
+        oi.product_name,
+        oi.quantity
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.id = $1
+      ORDER BY oi.product_name
+      `,
+      [orderId]
+    );
+
+    if (result.rows.length === 0) {
+      return reply.code(404).send({ error: "Order not found" });
+    }
+
+    // Create PDF
+    const doc = new PDFDocument({ margin: 40 });
+    reply.header("Content-Type", "application/pdf");
+    reply.header(
+      "Content-Disposition",
+      `attachment; filename=packing-slip-${orderId}.pdf`
+    );
+
+    doc.pipe(reply.raw);
+
+    // Header
+    doc.fontSize(18).text("Packing Slip", { align: "center" });
+    doc.moveDown();
+
+    const order = result.rows[0];
+
+    doc.fontSize(12);
+    doc.text(`Order #: ${order.order_number}`);
+    doc.text(`Order Date: ${new Date(order.order_date).toLocaleDateString()}`);
+    doc.text(`Customer: ${order.customer_name}`);
+    doc.text(`Ship To: ${order.recipient_name}`);
+    doc.text(`Status: ${order.status}`);
+    doc.moveDown();
+
+    doc.text("Items:");
+    doc.moveDown(0.5);
+
+    // Items
+    result.rows.forEach(item => {
+      doc.text(
+        `${item.quantity} × ${item.product_name} (${item.sku})`
+      );
+    });
+
+    doc.end();
+  } catch (err) {
+    request.log.error(err);
+    reply.code(500).send({ error: "Failed to generate PDF packing slip" });
+  }
+});
+
 
 // Start server
 app.listen({
