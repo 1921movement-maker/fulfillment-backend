@@ -311,12 +311,9 @@ app.post("/shipments", async (request, reply) => {
   }
 });
 
-
 // ==============================
-// Shipments & Tracking
+// GET SHIPMENTS FOR ORDER
 // ==============================
-
-// Get shipments for a specific order
 app.get("/orders/:orderId/shipments", async (request, reply) => {
   const { orderId } = request.params;
 
@@ -328,9 +325,11 @@ app.get("/orders/:orderId/shipments", async (request, reply) => {
         s.carrier,
         s.tracking_number,
         s.shipped_at,
-        s.created_at
+        o.order_number,
+        o.status
       FROM shipments s
-      WHERE s.order_id = $1
+      JOIN orders o ON s.order_id = o.id
+      WHERE o.id = $1
       ORDER BY s.shipped_at DESC
       `,
       [orderId]
@@ -345,6 +344,7 @@ app.get("/orders/:orderId/shipments", async (request, reply) => {
     return reply.code(500).send({ error: "Failed to fetch shipments" });
   }
 });
+
 
 
 
