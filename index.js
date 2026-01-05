@@ -539,7 +539,6 @@ app.get("/orders/:orderId/packing-slip/pdf", async (request, reply) => {
 // ==============================
 // BATCH PACKING SLIPS (PDF)
 // ==============================
-import PDFDocument from "pdfkit";
 
 app.get("/batches/:batchId/packing-slips/pdf", async (request, reply) => {
   const { batchId } = request.params;
