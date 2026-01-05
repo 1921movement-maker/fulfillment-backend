@@ -627,6 +627,89 @@ app.get("/batches/:batchId/packing-slips/pdf", async (request, reply) => {
   }
 });
 
+// ==============================
+// THERMAL PACKING SLIP (4x6)
+// ==============================
+import PDFDocument from "pdfkit";
+
+app.get("/orders/:orderId/packing-slip/thermal", async (request, reply) => {
+  const { orderId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        o.order_number,
+        o.customer_name,
+        o.recipient_name,
+        oi.product_name,
+        oi.quantity
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.id = $1
+      `,
+      [orderId]
+    );
+
+    if (result.rows.length === 0) {
+      reply.code(404);
+      return { error: "Order not found" };
+    }
+
+    reply.raw.setHeader("Content-Type", "application/pdf");
+    reply.raw.setHeader(
+      "Content-Disposition",
+      `attachment; filename=thermal-slip-${orderId}.pdf`
+    );
+
+    const doc = new PDFDocument({
+      size: [288, 432], // 4x6 inches
+      margin: 12
+    });
+
+    doc.pipe(reply.raw);
+
+    // ===== HEADER =====
+    doc.fontSize(16).text("PACKING SLIP", { align: "center" });
+    doc.moveDown(0.5);
+
+    const order = result.rows[0];
+
+    doc.fontSize(10);
+    doc.text(`Order #: ${order.order_number}`);
+    doc.text(`Ship To:`);
+    doc.text(order.recipient_name);
+    doc.moveDown(0.5);
+
+    doc.moveTo(12, doc.y).lineTo(276, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // ===== ITEMS =====
+    doc.fontSize(10).text("ITEMS:");
+    doc.moveDown(0.3);
+
+    result.rows.forEach(item => {
+      doc.text(`• ${item.product_name}`);
+      doc.text(`  Qty: ${item.quantity}`);
+      doc.moveDown(0.2);
+    });
+
+    doc.moveDown();
+
+    // ===== FOOTER =====
+    doc.fontSize(9).text("Thank you for your order!", {
+      align: "center"
+    });
+
+    doc.end();
+    return reply;
+
+  } catch (err) {
+    request.log.error(err);
+    reply.code(500);
+    return { error: "Failed to generate thermal packing slip" };
+  }
+});
 
 
 
