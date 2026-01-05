@@ -353,20 +353,19 @@ app.get("/orders/:orderId/shipments", async (request, reply) => {
 // ==============================
 app.post("/orders/:orderId/shipments", async (request, reply) => {
   const { orderId } = request.params;
-  const { carrier, tracking_number } = request.body;
+  const { carrier, tracking_number, shipped_at } = request.body;
 
   try {
-    // 1️⃣ Insert shipment
-    const shipmentResult = await pool.query(
+    // 1️⃣ Create shipment
+    await pool.query(
       `
       INSERT INTO shipments (order_id, carrier, tracking_number, shipped_at)
-      VALUES ($1, $2, $3, NOW())
-      RETURNING *
+      VALUES ($1, $2, $3, $4)
       `,
-      [orderId, carrier, tracking_number]
+      [orderId, carrier, tracking_number, shipped_at]
     );
 
-    // 2️⃣ AUTO-update order status → SHIPPED
+    // 2️⃣ Auto-update order status
     await pool.query(
       `
       UPDATE orders
@@ -377,8 +376,8 @@ app.post("/orders/:orderId/shipments", async (request, reply) => {
     );
 
     return reply.send({
-      message: "Shipment created and order marked as shipped",
-      shipment: shipmentResult.rows[0],
+      success: true,
+      message: "Shipment created and order marked as Shipped",
     });
   } catch (err) {
     request.log.error(err);
@@ -386,18 +385,6 @@ app.post("/orders/:orderId/shipments", async (request, reply) => {
   }
 });
 
-
-// ==============================
-// AUTO UPDATE ORDER STATUS
-// ==============================
-await pool.query(
-  `
-  UPDATE orders
-  SET status = 'Shipped'
-  WHERE id = $1
-  `,
-  [orderId]
-);
 
 
 
