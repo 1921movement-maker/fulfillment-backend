@@ -345,6 +345,45 @@ app.get("/orders/:orderId/shipments", async (request, reply) => {
   }
 });
 
+// ==============================
+// POST SHIPMENT (Add tracking)
+// ==============================
+app.post("/orders/:orderId/shipments", async (request, reply) => {
+  const { orderId } = request.params;
+  const { carrier, tracking_number, shipped_at } = request.body;
+
+  // Basic validation
+  if (!carrier || !tracking_number) {
+    return reply.code(400).send({
+      error: "carrier and tracking_number are required",
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `
+      INSERT INTO shipments (
+        order_id,
+        carrier,
+        tracking_number,
+        shipped_at
+      )
+      VALUES ($1, $2, $3, COALESCE($4, NOW()))
+      RETURNING *
+      `,
+      [orderId, carrier, tracking_number, shipped_at]
+    );
+
+    return reply.code(201).send({
+      message: "Shipment created",
+      shipment: result.rows[0],
+    });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to create shipment" });
+  }
+});
+
 
 
 
