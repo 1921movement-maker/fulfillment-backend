@@ -763,6 +763,60 @@ app.get("/batches/:batchId/pick-list/thermal", async (request, reply) => {
   }
 });
 
+// ==============================
+// THERMAL ORDER PACKING SLIP
+// ==============================
+app.get("/orders/:orderId/packing-slip/thermal", async (request, reply) => {
+  const { orderId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        o.order_number,
+        o.customer_name,
+        o.recipient_name,
+        oi.product_name,
+        oi.quantity
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.id = $1
+      ORDER BY oi.product_name
+      `,
+      [orderId]
+    );
+
+    if (result.rows.length === 0) {
+      return reply.code(404).send("Order not found");
+    }
+
+    // Build thermal text
+    let output = "";
+    output += "1921 MOVEMENT\n";
+    output += "--------------------------\n";
+    output += `ORDER #: ${result.rows[0].order_number}\n`;
+    output += `CUSTOMER: ${result.rows[0].customer_name}\n`;
+    output += `SHIP TO: ${result.rows[0].recipient_name}\n`;
+    output += "--------------------------\n";
+    output += "ITEMS:\n";
+
+    result.rows.forEach(item => {
+      output += `${item.quantity} x ${item.product_name}\n`;
+    });
+
+    output += "--------------------------\n";
+    output += "PACKED BY: ________\n";
+    output += "DATE: ____________\n\n\n";
+
+    reply.header("Content-Type", "text/plain");
+    return reply.send(output);
+
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send("Failed to generate thermal packing slip");
+  }
+});
+
 
 
 // Start server
