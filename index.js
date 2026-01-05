@@ -218,63 +218,6 @@ app.get("/batches/:batchId/pick-list", async (request, reply) => {
 });
 
 // ==============================
-// ORDER PACKING SLIP
-// ==============================
-app.get("/orders/:orderId/packing-slip", async (request, reply) => {
-  const { orderId } = request.params;
-
-  try {
-    const result = await pool.query(
-      `
-      SELECT
-        o.id AS order_id,
-        o.order_number,
-        o.order_date,
-        o.customer_name,
-        o.recipient_name,
-        o.order_total,
-        o.status,
-        b.name AS batch_name,
-        oi.sku,
-        oi.product_name,
-        oi.quantity
-      FROM orders o
-      LEFT JOIN batches b ON o.batch_id = b.id
-      JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.id = $1
-      ORDER BY oi.product_name;
-      `,
-      [orderId]
-    );
-
-    if (result.rows.length === 0) {
-      return reply.code(404).send({ error: "Order not found" });
-    }
-
-    const order = {
-      order_id: result.rows[0].order_id,
-      order_number: result.rows[0].order_number,
-      order_date: result.rows[0].order_date,
-      customer_name: result.rows[0].customer_name,
-      recipient_name: result.rows[0].recipient_name,
-      order_total: result.rows[0].order_total,
-      status: result.rows[0].status,
-      batch_name: result.rows[0].batch_name,
-      items: result.rows.map(row => ({
-        sku: row.sku,
-        product_name: row.product_name,
-        quantity: row.quantity,
-      })),
-    };
-
-    return reply.send({ packing_slip: order });
-  } catch (err) {
-    request.log.error(err);
-    return reply.code(500).send({ error: "Failed to generate packing slip" });
-  }
-});
-
-// ==============================
 // CREATE SHIPMENT
 // ==============================
 app.post("/shipments", async (request, reply) => {
