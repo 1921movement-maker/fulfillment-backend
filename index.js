@@ -385,8 +385,74 @@ app.post("/orders/:orderId/shipments", async (request, reply) => {
   }
 });
 
+// ==============================
+// PACKING SLIP (Single Order)
+// ==============================
+app.get("/orders/:orderId/packing-slip", async (request, reply) => {
+  const { orderId } = request.params;
 
+  try {
+    // Order + customer info
+    const orderResult = await pool.query(
+      `
+      SELECT
+        o.id,
+        o.order_number,
+        o.order_date,
+        o.customer_name,
+        o.recipient_name,
+        o.status
+      FROM orders o
+      WHERE o.id = $1
+      `,
+      [orderId]
+    );
 
+    if (orderResult.rows.length === 0) {
+      return reply.code(404).send({ error: "Order not found" });
+    }
+
+    // Order items
+    const itemsResult = await pool.query(
+      `
+      SELECT
+        oi.sku,
+        oi.product_name,
+        oi.quantity
+      FROM order_items oi
+      WHERE oi.order_id = $1
+      ORDER BY oi.product_name
+      `,
+      [orderId]
+    );
+
+    // Shipment (if exists)
+    const shipmentResult = await pool.query(
+      `
+      SELECT
+        carrier,
+        tracking_number,
+        shipped_at
+      FROM shipments
+      WHERE order_id = $1
+      ORDER BY shipped_at DESC
+      LIMIT 1
+      `,
+      [orderId]
+    );
+
+    return reply.send({
+      packing_slip: {
+        order: orderResult.rows[0],
+        items: itemsResult.rows,
+        shipment: shipmentResult.rows[0] || null,
+      },
+    });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to generate packing slip" });
+  }
+});
 
 
 // Start server
