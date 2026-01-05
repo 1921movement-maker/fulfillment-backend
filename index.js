@@ -311,10 +311,13 @@ app.post("/shipments", async (request, reply) => {
   }
 });
 
+
 // ==============================
-// GET SHIPMENT FOR ORDER
+// Shipments & Tracking
 // ==============================
-app.get("/orders/:orderId/shipment", async (request, reply) => {
+
+// Get shipments for a specific order
+app.get("/orders/:orderId/shipments", async (request, reply) => {
   const { orderId } = request.params;
 
   try {
@@ -325,24 +328,21 @@ app.get("/orders/:orderId/shipment", async (request, reply) => {
         s.carrier,
         s.tracking_number,
         s.shipped_at,
-        s.delivered_at,
-        o.order_number,
-        o.status
+        s.created_at
       FROM shipments s
-      JOIN orders o ON s.order_id = o.id
-      WHERE o.id = $1
+      WHERE s.order_id = $1
+      ORDER BY s.shipped_at DESC
       `,
       [orderId]
     );
 
-    if (result.rows.length === 0) {
-      return reply.code(404).send({ error: "Shipment not found" });
-    }
-
-    return reply.send({ shipment: result.rows[0] });
+    return reply.send({
+      order_id: orderId,
+      shipments: result.rows,
+    });
   } catch (err) {
     request.log.error(err);
-    return reply.code(500).send({ error: "Failed to fetch shipment" });
+    return reply.code(500).send({ error: "Failed to fetch shipments" });
   }
 });
 
