@@ -311,6 +311,41 @@ app.post("/shipments", async (request, reply) => {
   }
 });
 
+// ==============================
+// GET SHIPMENT FOR ORDER
+// ==============================
+app.get("/orders/:orderId/shipment", async (request, reply) => {
+  const { orderId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        s.id,
+        s.carrier,
+        s.tracking_number,
+        s.shipped_at,
+        s.delivered_at,
+        o.order_number,
+        o.status
+      FROM shipments s
+      JOIN orders o ON s.order_id = o.id
+      WHERE o.id = $1
+      `,
+      [orderId]
+    );
+
+    if (result.rows.length === 0) {
+      return reply.code(404).send({ error: "Shipment not found" });
+    }
+
+    return reply.send({ shipment: result.rows[0] });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch shipment" });
+  }
+});
+
 
 
 // Start server
