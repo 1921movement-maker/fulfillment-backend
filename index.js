@@ -493,21 +493,21 @@ app.get("/orders/:orderId/packing-slip/pdf", async (request, reply) => {
     );
 
     if (result.rows.length === 0) {
-      return reply.code(404).send({ error: "No items found for this order" });
+      reply.code(404);
+      return { error: "No items found for this order" };
     }
 
-    // Create PDF
-    const doc = new PDFDocument({ margin: 40 });
-
-    reply.header("Content-Type", "application/pdf");
-    reply.header(
+    // IMPORTANT: tell Fastify we handle the response manually
+    reply.raw.setHeader("Content-Type", "application/pdf");
+    reply.raw.setHeader(
       "Content-Disposition",
       `attachment; filename=packing-slip-${orderId}.pdf`
     );
 
+    const doc = new PDFDocument({ margin: 40 });
     doc.pipe(reply.raw);
 
-    // Header
+    // ===== PDF CONTENT =====
     doc.fontSize(18).text("Packing Slip", { underline: true });
     doc.moveDown();
 
@@ -527,11 +527,15 @@ app.get("/orders/:orderId/packing-slip/pdf", async (request, reply) => {
     });
 
     doc.end();
+
+    return reply; // 🔑 THIS LINE MATTERS
   } catch (err) {
     request.log.error(err);
-    return reply.code(500).send({ error: "Failed to generate PDF packing slip" });
+    reply.code(500);
+    return { error: "Failed to generate PDF packing slip" };
   }
 });
+
 
 
 
