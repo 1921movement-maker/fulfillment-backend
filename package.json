@@ -5,6 +5,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "bwip-js": "^4.8.0",
     "pdfkit": "^0.17.2"
   }
 }
