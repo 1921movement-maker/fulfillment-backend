@@ -3,6 +3,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "pdfkit": "^0.17.2"
   }
 }
-
