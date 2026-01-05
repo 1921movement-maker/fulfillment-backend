@@ -274,6 +274,43 @@ app.get("/orders/:orderId/packing-slip", async (request, reply) => {
   }
 });
 
+// ==============================
+// CREATE SHIPMENT
+// ==============================
+app.post("/shipments", async (request, reply) => {
+  const { order_id, carrier, tracking_number } = request.body;
+
+  if (!order_id || !carrier || !tracking_number) {
+    return reply.code(400).send({ error: "Missing required fields" });
+  }
+
+  try {
+    // Create shipment
+    await pool.query(
+      `
+      INSERT INTO shipments (order_id, carrier, tracking_number, shipped_at)
+      VALUES ($1, $2, $3, NOW())
+      `,
+      [order_id, carrier, tracking_number]
+    );
+
+    // Update order status
+    await pool.query(
+      `
+      UPDATE orders
+      SET status = 'Shipped'
+      WHERE id = $1
+      `,
+      [order_id]
+    );
+
+    return reply.send({ success: true, message: "Shipment created" });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to create shipment" });
+  }
+});
+
 
 
 // Start server
