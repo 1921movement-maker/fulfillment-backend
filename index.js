@@ -384,6 +384,18 @@ app.post("/orders/:orderId/shipments", async (request, reply) => {
   }
 });
 
+// ==============================
+// AUTO UPDATE ORDER STATUS
+// ==============================
+await pool.query(
+  `
+  UPDATE orders
+  SET status = 'Shipped'
+  WHERE id = $1
+  `,
+  [orderId]
+);
+
 
 
 
