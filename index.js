@@ -630,7 +630,7 @@ app.get("/batches/:batchId/packing-slips/pdf", async (request, reply) => {
 // ==============================
 // THERMAL PACKING SLIP (4x6)
 // ==============================
-import PDFDocument from "pdfkit";
+
 
 app.get("/orders/:orderId/packing-slip/thermal", async (request, reply) => {
   const { orderId } = request.params;
