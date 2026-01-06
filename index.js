@@ -779,6 +779,52 @@ app.get("/orders/:orderId/packing-slip/thermal", async (request, reply) => {
   }
 });
 
+// ==============================
+// AUTO-PRINT BATCH PICK LIST
+// ==============================
+app.get("/print/batches/:batchId/pick-list", async (request, reply) => {
+  const { batchId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        oi.product_name,
+        SUM(oi.quantity) AS total_quantity
+      FROM orders o
+      JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.batch_id = $1
+      GROUP BY oi.product_name
+      ORDER BY oi.product_name
+      `,
+      [batchId]
+    );
+
+    if (result.rows.length === 0) {
+      reply.code(404);
+      return "No items found for this batch";
+    }
+
+    reply.header("Content-Type", "text/plain");
+    reply.header("X-Auto-Print", "true");
+
+    let output = "";
+    output += "BATCH PICK LIST\n";
+    output += `Batch ID: ${batchId}\n`;
+    output += "--------------------\n\n";
+
+    result.rows.forEach(item => {
+      output += `${item.product_name}\n`;
+      output += `QTY: ${item.total_quantity}\n\n`;
+    });
+
+    return output;
+  } catch (err) {
+    request.log.error(err);
+    reply.code(500);
+    return "Failed to auto-print pick list";
+  }
+});
 
 
 // Start server
