@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import pkg from "pg";
+import bwipjs from "bwip-js";
+
 
 const { Pool } = pkg;
 
@@ -628,7 +630,7 @@ app.get("/batches/:batchId/packing-slips/pdf", async (request, reply) => {
 });
 
 // ==============================
-// THERMAL PICK LIST (BATCH)
+// THERMAL PICK LIST (4x6) + BARCODE
 // ==============================
 app.get("/batches/:batchId/pick-list/thermal", async (request, reply) => {
   const { batchId } = request.params;
@@ -637,47 +639,91 @@ app.get("/batches/:batchId/pick-list/thermal", async (request, reply) => {
     const result = await pool.query(
       `
       SELECT
-        oi.sku,
+        o.id AS order_id,
+        o.order_number,
         oi.product_name,
-        SUM(oi.quantity) AS total_quantity
+        oi.quantity
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
       WHERE o.batch_id = $1
-      GROUP BY oi.sku, oi.product_name
-      ORDER BY oi.product_name
+      ORDER BY o.id
       `,
       [batchId]
     );
 
     if (result.rows.length === 0) {
       reply.code(404);
-      return "No items found for this batch";
+      return { error: "No orders found for this batch" };
     }
 
-    // Plain text for thermal printers
-    reply.header("Content-Type", "text/plain");
+    reply.raw.setHeader("Content-Type", "application/pdf");
+    reply.raw.setHeader(
+      "Content-Disposition",
+      `attachment; filename=batch-${batchId}-pick-list.pdf`
+    );
 
-    let output = "";
-    output += "BATCH PICK LIST\n";
-    output += `Batch ID: ${batchId}\n`;
-    output += "----------------------\n\n";
-
-    result.rows.forEach(item => {
-      output += `SKU: ${item.sku}\n`;
-      output += `${item.product_name}\n`;
-      output += `TOTAL QTY: ${item.total_quantity}\n\n`;
+    const doc = new PDFDocument({
+      size: [288, 432], // 4x6
+      margin: 12
     });
 
-    output += "----------------------\n";
-    output += `Generated: ${new Date().toLocaleDateString()}\n`;
+    doc.pipe(reply.raw);
 
-    return output;
+    let currentOrder = null;
+
+    for (const row of result.rows) {
+      if (currentOrder !== row.order_id) {
+        if (currentOrder !== null) {
+          doc.addPage();
+        }
+
+        currentOrder = row.order_id;
+
+        // ===== ORDER HEADER =====
+        doc.fontSize(14).text("PICK LIST", { align: "center" });
+        doc.moveDown(0.3);
+
+        doc.fontSize(10).text(`Order #: ${row.order_number}`);
+        doc.moveDown(0.3);
+
+        // ===== BARCODE =====
+        const barcodeBuffer = await bwipjs.toBuffer({
+          bcid: "code128",
+          text: String(row.order_number),
+          scale: 2,
+          height: 10,
+          includetext: false
+        });
+
+        doc.image(barcodeBuffer, {
+          fit: [200, 50],
+          align: "center"
+        });
+
+        doc.moveDown(0.5);
+        doc.moveTo(12, doc.y).lineTo(276, doc.y).stroke();
+        doc.moveDown(0.3);
+
+        doc.fontSize(10).text("ITEMS:");
+        doc.moveDown(0.2);
+      }
+
+      // ===== ITEM LINE =====
+      doc.fontSize(9).text(
+        `• ${row.product_name}  (Qty: ${row.quantity})`
+      );
+    }
+
+    doc.end();
+    return reply;
+
   } catch (err) {
     request.log.error(err);
     reply.code(500);
-    return "Failed to generate pick list";
+    return { error: "Failed to generate thermal pick list" };
   }
 });
+
 
 // ==============================
 // THERMAL ORDER PACKING SLIP
