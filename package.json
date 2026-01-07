@@ -5,7 +5,10 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@easypost/api": "^7.4.0",
     "bwip-js": "^4.8.0",
-    "pdfkit": "^0.17.2"
+    "fastify": "^5.2.0",
+    "pg": "^8.13.1",
+    "pdfkit": "^0.15.0"
   }
 }
