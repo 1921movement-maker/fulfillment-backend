@@ -37,13 +37,13 @@ app.get("/", async (request, reply) => {
 <html>
 <head>
   <title>Fulfillment Backend</title>
+  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       max-width: 800px;
       margin: 50px auto;
       padding: 20px;
-      background: #f7f7f7;
     }
     .card {
       background: white;
@@ -51,40 +51,114 @@ app.get("/", async (request, reply) => {
       border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
-    h1 { color: #333; }
-    .endpoint {
-      background: #f0f0f0;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 4px;
-      font-family: monospace;
-    }
     .status { color: #28a745; font-weight: bold; }
+    #token { 
+      background: #f0f0f0; 
+      padding: 15px; 
+      border-radius: 4px; 
+      font-family: monospace; 
+      word-break: break-all;
+      margin: 20px 0;
+    }
+    button {
+      background: #5c6ac4;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #4a5aad;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>🚀 Fulfillment Backend</h1>
-    <p class="status">✅ Server is running!</p>
+    <h1>Fulfillment Backend</h1>
+    <p class="status">Server is running!</p>
     
-    <h2>Available Endpoints:</h2>
-    <div class="endpoint">POST /shopify/sync-orders</div>
-    <div class="endpoint">POST /shopify/fulfill-order</div>
-    <div class="endpoint">GET /print/order/:orderId</div>
-    <div class="endpoint">GET /print/batch/:batchId</div>
-    <div class="endpoint">POST /manifests/create</div>
-    <div class="endpoint">GET /manifests/:manifestId/print</div>
+    <h2>Get Your Access Token:</h2>
+    <button onclick="getToken()">Generate Access Token</button>
     
-    <p style="margin-top: 30px; color: #666;">
-      Your Shopify fulfillment system is ready!
-    </p>
+    <div id="token" style="display:none;">
+      <strong>Your Access Token:</strong><br>
+      <span id="tokenValue"></span>
+      <br><br>
+      <small>Copy this and add it to Railway as SHOPIFY_ACCESS_TOKEN</small>
+    </div>
+    
+    <div id="error" style="color: red; margin-top: 20px;"></div>
   </div>
+  
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const host = urlParams.get('host');
+    const shop = urlParams.get('shop');
+    
+    async function getToken() {
+      try {
+        if (!host) {
+          document.getElementById('error').textContent = 'Not loaded from Shopify. Open this from your Shopify admin.';
+          return;
+        }
+        
+        // Initialize App Bridge
+        const app = window['app-bridge'].createApp({
+          apiKey: '${process.env.SHOPIFY_CLIENT_ID}',
+          host: host
+        });
+        
+        // Get session token
+        const sessionToken = await window['app-bridge-utils'].getSessionToken(app);
+        
+        document.getElementById('token').style.display = 'block';
+        document.getElementById('tokenValue').textContent = sessionToken;
+        
+        // Also send to backend to exchange for permanent token
+        const response = await fetch('/shopify/exchange-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + sessionToken
+          },
+          body: JSON.stringify({ shop: shop })
+        });
+        
+        const data = await response.json();
+        if (data.access_token) {
+          document.getElementById('tokenValue').textContent = data.access_token;
+        }
+        
+      } catch (error) {
+        document.getElementById('error').textContent = 'Error: ' + error.message;
+      }
+    }
+  </script>
 </body>
 </html>
   `;
   
   reply.header("Content-Type", "text/html");
   return reply.send(html);
+});
+
+// Exchange session token for permanent access token
+app.post("/shopify/exchange-token", async (request, reply) => {
+  const authHeader = request.headers.authorization;
+  const sessionToken = authHeader?.replace('Bearer ', '');
+  
+  if (!sessionToken) {
+    return reply.code(401).send({ error: 'No session token provided' });
+  }
+  
+  // For now, just return the session token
+  // In production, you'd verify this token and exchange it
+  return reply.send({ 
+    session_token: sessionToken,
+    message: "Use the Custom App method to get a permanent token - session tokens expire quickly"
+  });
 });
 
 app.get("/orders/stats", async (request, reply) => {
