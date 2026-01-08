@@ -1211,86 +1211,36 @@ app.get("/manifests", async (request, reply) => {
 });
 
 // ==============================
-// SHOPIFY OAUTH & INTEGRATION
+// SHOPIFY INTEGRATION (Using API Key & Secret)
 // ==============================
 
-// Shopify OAuth - Step 1: Redirect to Shopify for authorization
-app.get("/auth/shopify", async (request, reply) => {
+async function makeShopifyRequest(endpoint, method = 'GET', body = null) {
   const shop = process.env.SHOPIFY_SHOP_DOMAIN;
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const redirectUri = `${request.protocol}://${request.hostname}/auth/shopify/callback`;
+  const apiKey = process.env.SHOPIFY_CLIENT_ID;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
   
-  const scopes = 'read_orders,write_orders,read_fulfillments,write_fulfillments';
+  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
   
-  const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}`;
-  
-  return reply.redirect(authUrl);
-});
-
-// Shopify OAuth - Step 2: Handle callback and get access token
-app.get("/auth/shopify/callback", async (request, reply) => {
-  const { code } = request.query;
-  const shop = process.env.SHOPIFY_SHOP_DOMAIN;
-  
-  if (!code) {
-    return reply.code(400).send({ error: "No authorization code received" });
-  }
-  
-  try {
-    const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: process.env.SHOPIFY_CLIENT_ID,
-        client_secret: process.env.SHOPIFY_API_SECRET,
-        code: code
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.access_token) {
-      return reply.send({
-        success: true,
-        message: "Authorization successful! Add this to Railway Variables:",
-        access_token: data.access_token,
-        instruction: "Copy this token and add it as SHOPIFY_ACCESS_TOKEN in Railway"
-      });
-    } else {
-      return reply.code(500).send({ error: "Failed to get access token", details: data });
+  const options = {
+    method,
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json'
     }
-    
-  } catch (err) {
-    request.log.error(err);
-    return reply.code(500).send({ error: "OAuth failed", details: err.message });
+  };
+  
+  if (body) {
+    options.body = JSON.stringify(body);
   }
-});
+  
+  const response = await fetch(`https://${shop}/admin/api/2024-01/${endpoint}`, options);
+  return response.json();
+}
 
-// ==============================
-// SYNC ORDERS FROM SHOPIFY
-// ==============================
+// Sync orders from Shopify
 app.post("/shopify/sync-orders", async (request, reply) => {
-  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-  
-  if (!accessToken) {
-    return reply.code(400).send({ 
-      error: "Shopify not connected. Visit /auth/shopify first" 
-    });
-  }
-  
   try {
-    const shop = process.env.SHOPIFY_SHOP_DOMAIN;
-    const response = await fetch(
-      `https://${shop}/admin/api/2024-01/orders.json?status=open&fulfillment_status=unfulfilled&limit=250`,
-      {
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    const data = await response.json();
+    const data = await makeShopifyRequest('orders.json?status=open&fulfillment_status=unfulfilled&limit=250');
     
     if (!data.orders) {
       return reply.code(500).send({ error: "Failed to fetch orders", details: data });
@@ -1301,35 +1251,22 @@ app.post("/shopify/sync-orders", async (request, reply) => {
     
     for (const shopifyOrder of data.orders) {
       try {
-        // Check if order already exists
         const existing = await pool.query(
           `SELECT id FROM orders WHERE order_number = $1`,
           [String(shopifyOrder.order_number)]
         );
         
-        if (existing.rows.length > 0) {
-          continue;
-        }
+        if (existing.rows.length > 0) continue;
         
         const shipping = shopifyOrder.shipping_address || {};
         const customer = shopifyOrder.customer || {};
         
-        // Insert order
         const orderResult = await pool.query(
           `
           INSERT INTO orders (
-            order_number,
-            order_date,
-            customer_name,
-            recipient_name,
-            recipient_address,
-            recipient_city,
-            recipient_state,
-            recipient_zip,
-            recipient_phone,
-            order_total,
-            status,
-            shopify_order_id
+            order_number, order_date, customer_name, recipient_name,
+            recipient_address, recipient_city, recipient_state, recipient_zip,
+            recipient_phone, order_total, status, shopify_order_id
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING id
           `,
@@ -1351,35 +1288,18 @@ app.post("/shopify/sync-orders", async (request, reply) => {
         
         const orderId = orderResult.rows[0].id;
         
-        // Insert order items
         for (const item of shopifyOrder.line_items) {
           await pool.query(
-            `
-            INSERT INTO order_items (
-              order_id,
-              sku,
-              product_name,
-              quantity,
-              price
-            ) VALUES ($1, $2, $3, $4, $5)
-            `,
-            [
-              orderId,
-              item.sku || String(item.variant_id),
-              item.name,
-              item.quantity,
-              item.price
-            ]
+            `INSERT INTO order_items (order_id, sku, product_name, quantity, price)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [orderId, item.sku || String(item.variant_id), item.name, item.quantity, item.price]
           );
         }
         
         imported.push(shopifyOrder.order_number);
         
       } catch (err) {
-        errors.push({ 
-          order: shopifyOrder.order_number, 
-          error: err.message 
-        });
+        errors.push({ order: shopifyOrder.order_number, error: err.message });
       }
     }
     
@@ -1393,95 +1313,7 @@ app.post("/shopify/sync-orders", async (request, reply) => {
     
   } catch (err) {
     request.log.error(err);
-    return reply.code(500).send({ 
-      error: "Failed to sync Shopify orders",
-      details: err.message 
-    });
-  }
-});
-
-// ==============================
-// FULFILL ORDER IN SHOPIFY
-// ==============================
-app.post("/shopify/fulfill-order", async (request, reply) => {
-  const { orderId } = request.body;
-  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-  
-  if (!accessToken) {
-    return reply.code(400).send({ error: "Shopify not connected" });
-  }
-  
-  try {
-    const orderResult = await pool.query(
-      `
-      SELECT
-        o.shopify_order_id,
-        o.order_number,
-        s.tracking_number,
-        s.carrier
-      FROM orders o
-      LEFT JOIN shipments s ON s.order_id = o.id
-      WHERE o.id = $1
-      LIMIT 1
-      `,
-      [orderId]
-    );
-    
-    if (orderResult.rows.length === 0) {
-      return reply.code(404).send({ error: "Order not found" });
-    }
-    
-    const order = orderResult.rows[0];
-    
-    if (!order.shopify_order_id) {
-      return reply.code(400).send({ error: "Order not from Shopify" });
-    }
-    
-    if (!order.tracking_number) {
-      return reply.code(400).send({ error: "No tracking number" });
-    }
-    
-    const shop = process.env.SHOPIFY_SHOP_DOMAIN;
-    const response = await fetch(
-      `https://${shop}/admin/api/2024-01/orders/${order.shopify_order_id}/fulfillments.json`,
-      {
-        method: 'POST',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          fulfillment: {
-            notify_customer: true,
-            tracking_info: {
-              number: order.tracking_number,
-              company: order.carrier
-            }
-          }
-        })
-      }
-    );
-    
-    const data = await response.json();
-    
-    if (data.fulfillment) {
-      await pool.query(
-        `UPDATE orders SET status = 'Fulfilled', fulfilled_at = NOW() WHERE id = $1`,
-        [orderId]
-      );
-      
-      return reply.send({
-        success: true,
-        message: "Order fulfilled in Shopify",
-        fulfillment_id: data.fulfillment.id
-      });
-    } else {
-      return reply.code(500).send({ error: "Failed to fulfill", details: data });
-    }
-    
-  } catch (err) {
-    request.log.error(err);
-    return reply.code(500).send({ error: "Failed to fulfill order" });
+    return reply.code(500).send({ error: "Failed to sync orders", details: err.message });
   }
 });
 
