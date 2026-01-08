@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import pkg from "pg";
 import bwipjs from "bwip-js";
-
+import EasyPost from '@easypost/api';
 
 const { Pool } = pkg;
 
@@ -12,6 +12,8 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+// Initialize EasyPost for shipping labels
+const easypost = new EasyPost(process.env.EASYPOST_API_KEY);
 // Health check
 app.get("/health", async () => {
   const result = await pool.query("SELECT 1");
@@ -826,6 +828,34 @@ app.get("/print/batches/:batchId/pick-list", async (request, reply) => {
   }
 });
 
+// ==============================
+// SHIPPING LABEL PURCHASE SYSTEM
+// ==============================
+
+app.post("/shipping/create-label", async (request, reply) => {
+  const { orderId } = request.body;
+
+  try {
+    const orderResult = await pool.query(
+      `SELECT * FROM orders WHERE id = $1`,
+      [orderId]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return reply.code(404).send({ error: "Order not found" });
+    }
+
+    return reply.send({ 
+      success: true, 
+      message: "Shipping endpoint is working! EasyPost ready.",
+      order: orderResult.rows[0]
+    });
+
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to create label" });
+  }
+});
 
 // Start server
 app.listen({
