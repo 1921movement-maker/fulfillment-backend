@@ -3,6 +3,8 @@ import pkg from "pg";
 import bwipjs from "bwip-js";
 import EasyPost from '@easypost/api';
 
+
+
 const { Pool } = pkg;
 
 const app = Fastify({ logger: true });
@@ -24,6 +26,65 @@ app.get("/health", async () => {
     status: "ok",
     database: result.rowCount === 1,
   };
+});
+
+// ==============================
+// SHOPIFY APP HOME PAGE
+// ==============================
+app.get("/", async (request, reply) => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fulfillment Backend</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f7f7f7;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { color: #333; }
+    .endpoint {
+      background: #f0f0f0;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .status { color: #28a745; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚀 Fulfillment Backend</h1>
+    <p class="status">✅ Server is running!</p>
+    
+    <h2>Available Endpoints:</h2>
+    <div class="endpoint">POST /shopify/sync-orders</div>
+    <div class="endpoint">POST /shopify/fulfill-order</div>
+    <div class="endpoint">GET /print/order/:orderId</div>
+    <div class="endpoint">GET /print/batch/:batchId</div>
+    <div class="endpoint">POST /manifests/create</div>
+    <div class="endpoint">GET /manifests/:manifestId/print</div>
+    
+    <p style="margin-top: 30px; color: #666;">
+      Your Shopify fulfillment system is ready!
+    </p>
+  </div>
+</body>
+</html>
+  `;
+  
+  reply.header("Content-Type", "text/html");
+  return reply.send(html);
 });
 
 app.get("/orders/stats", async (request, reply) => {
