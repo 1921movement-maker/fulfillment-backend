@@ -860,6 +860,221 @@ app.post("/shipping/create-label", async (request, reply) => {
   }
 });
 
+// ==============================
+// SHIPPING MANIFEST / SCAN FORM SYSTEM
+// ==============================
+
+app.post("/manifests/create", async (request, reply) => {
+  const { batchId } = request.body;
+
+  try {
+    // Get all shipments in the batch
+    const shipmentsResult = await pool.query(
+      `
+      SELECT
+        s.id,
+        s.tracking_number,
+        s.carrier
+      FROM shipments s
+      JOIN orders o ON s.order_id = o.id
+      WHERE o.batch_id = $1
+        AND s.tracking_number IS NOT NULL
+      ORDER BY s.id
+      `,
+      [batchId]
+    );
+
+    if (shipmentsResult.rows.length === 0) {
+      return reply.code(404).send({ error: "No shipments found in batch" });
+    }
+
+    const shipments = shipmentsResult.rows;
+    const trackingNumbers = shipments.map(s => s.tracking_number);
+    const carrier = shipments[0].carrier;
+
+    // For now, create a simple manifest without EasyPost
+    // When you get EasyPost key, we'll add SCAN form generation
+    const manifestResult = await pool.query(
+      `
+      INSERT INTO shipping_manifests 
+        (batch_id, carrier, tracking_codes, shipment_count)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+      `,
+      [batchId, carrier, trackingNumbers, trackingNumbers.length]
+    );
+
+    const manifest = manifestResult.rows[0];
+
+    return reply.send({
+      success: true,
+      manifest,
+      print_url: `/manifests/${manifest.id}/print`,
+      shipment_count: trackingNumbers.length
+    });
+
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to create manifest" });
+  }
+});
+
+// ==============================
+// PRINT MANIFEST
+// ==============================
+app.get("/manifests/:manifestId/print", async (request, reply) => {
+  const { manifestId } = request.params;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        m.*,
+        b.name AS batch_name
+      FROM shipping_manifests m
+      LEFT JOIN batches b ON m.batch_id = b.id
+      WHERE m.id = $1
+      `,
+      [manifestId]
+    );
+
+    if (result.rows.length === 0) {
+      return reply.code(404).send({ error: "Manifest not found" });
+    }
+
+    const manifest = result.rows[0];
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Shipping Manifest - ${manifest.id}</title>
+  <style>
+    @page {
+      size: 4in 6in;
+      margin: 0.2in;
+    }
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none; }
+    }
+    body {
+      font-family: Arial, sans-serif;
+      width: 4in;
+      margin: 0 auto;
+      padding: 0.3in;
+    }
+    h1 {
+      font-size: 18pt;
+      text-align: center;
+      margin: 0 0 10px 0;
+      border-bottom: 2px solid #000;
+      padding-bottom: 5px;
+    }
+    .info {
+      font-size: 11pt;
+      margin: 8px 0;
+    }
+    .label {
+      font-weight: bold;
+      display: inline-block;
+      width: 100px;
+    }
+    .shipments {
+      margin-top: 15px;
+      font-size: 9pt;
+      border-top: 1px solid #000;
+      padding-top: 8px;
+    }
+    .shipments h2 {
+      font-size: 10pt;
+      margin: 5px 0;
+    }
+    button {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 10px 20px;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14pt;
+    }
+  </style>
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    };
+  </script>
+</head>
+<body>
+  <button class="no-print" onclick="window.print()">🖨️ Print</button>
+  
+  <h1>SHIPPING MANIFEST</h1>
+  
+  <div class="info">
+    <span class="label">Manifest ID:</span> ${manifest.id}
+  </div>
+  <div class="info">
+    <span class="label">Date:</span> ${new Date(manifest.manifest_date).toLocaleDateString()}
+  </div>
+  <div class="info">
+    <span class="label">Carrier:</span> ${manifest.carrier}
+  </div>
+  ${manifest.batch_name ? `
+    <div class="info">
+      <span class="label">Batch:</span> ${manifest.batch_name}
+    </div>
+  ` : ''}
+  <div class="info">
+    <span class="label">Packages:</span> ${manifest.shipment_count}
+  </div>
+  
+  <div class="shipments">
+    <h2>Tracking Numbers (${manifest.tracking_codes.length})</h2>
+    ${manifest.tracking_codes.map(code => `
+      <div>${code}</div>
+    `).join('')}
+  </div>
+</body>
+</html>
+    `;
+
+    reply.header("Content-Type", "text/html");
+    return reply.send(html);
+
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to print manifest" });
+  }
+});
+
+// ==============================
+// GET ALL MANIFESTS
+// ==============================
+app.get("/manifests", async (request, reply) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        m.*,
+        b.name AS batch_name
+      FROM shipping_manifests m
+      LEFT JOIN batches b ON m.batch_id = b.id
+      ORDER BY m.created_at DESC
+      `
+    );
+    return reply.send({ manifests: result.rows });
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: "Failed to fetch manifests" });
+  }
+});
+
 // Start server
 app.listen({
   port: process.env.PORT || 3000,
