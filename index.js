@@ -2,6 +2,9 @@ import Fastify from "fastify";
 import pkg from "pg";
 import bwipjs from "bwip-js";
 import EasyPost from '@easypost/api';
+import crypto from "crypto";
+import fetch from "node-fetch";
+
 
 
 
@@ -1316,6 +1319,65 @@ app.post("/shopify/sync-orders", async (request, reply) => {
     return reply.code(500).send({ error: "Failed to sync orders", details: err.message });
   }
 });
+
+/* -------------------------
+   SHOPIFY OAUTH ROUTES
+-------------------------- */
+
+app.get("/auth", (req, res) => {
+  const shop = req.query.shop;
+
+  if (!shop) {
+    return res.status(400).send("Missing shop parameter");
+  }
+
+  const state = crypto.randomBytes(16).toString("hex");
+  const redirectUri = `${process.env.APP_URL}/auth/callback`;
+
+  const installUrl =
+    `https://${shop}/admin/oauth/authorize` +
+    `?client_id=${process.env.SHOPIFY_API_KEY}` +
+    `&scope=${process.env.SHOPIFY_SCOPES}` +
+    `&redirect_uri=${redirectUri}` +
+    `&state=${state}`;
+
+  res.redirect(installUrl);
+});
+
+app.get("/auth/callback", async (req, res) => {
+  const { shop, code } = req.query;
+
+  if (!shop || !code) {
+    return res.status(400).send("Missing shop or code");
+  }
+
+  try {
+    const tokenResponse = await fetch(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: process.env.SHOPIFY_API_KEY,
+          client_secret: process.env.SHOPIFY_API_SECRET,
+          code,
+        }),
+      }
+    );
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    console.log("SHOP:", shop);
+    console.log("ACCESS TOKEN:", accessToken);
+
+    res.send("App installed successfully. You can close this window.");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("OAuth failed");
+  }
+});
+
 
 // Start server
 app.listen({
