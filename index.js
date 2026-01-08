@@ -13,7 +13,10 @@ const pool = new Pool({
 });
 
 // Initialize EasyPost for shipping labels
-const easypost = new EasyPost(process.env.EASYPOST_API_KEY);
+// Initialize EasyPost (API key required)
+const easypost = process.env.EASYPOST_API_KEY 
+  ? new EasyPost(process.env.EASYPOST_API_KEY)
+  : null;
 // Health check
 app.get("/health", async () => {
   const result = await pool.query("SELECT 1");
