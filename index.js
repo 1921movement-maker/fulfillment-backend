@@ -1385,3 +1385,30 @@ app.listen({
   host: "0.0.0.0",
 });
 
+
+/* ==============================
+   TEST ENDPOINT
+============================== */
+app.get("/test/shop/:shop", async (request, reply) => {
+  const { shop } = request.params;
+  
+  try {
+    const shopData = await getShop(shop);
+    
+    if (!shopData) {
+      return reply.code(404).send({ error: "Shop not found" });
+    }
+    
+    return reply.send({
+      shop: shopData.shop,
+      shop_name: shopData.shop_name,
+      email: shopData.email,
+      is_active: shopData.is_active,
+      installed_at: shopData.installed_at,
+      has_token: !!shopData.access_token,
+    });
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send({ error: "Failed to retrieve shop" });
+  }
+});
