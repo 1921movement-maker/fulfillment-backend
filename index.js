@@ -32,68 +32,15 @@ app.get("/health", async () => {
 });
 
 // ==============================
-// SHOPIFY APP HOME PAGE
+// API STATUS
 // ==============================
 app.get("/", async (request, reply) => {
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Fulfillment Backend</title>
-  <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      max-width: 800px;
-      margin: 50px auto;
-      padding: 20px;
-    }
-    .card {
-      background: white;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    .status { color: #28a745; font-weight: bold; }
-    #token { 
-      background: #f0f0f0; 
-      padding: 15px; 
-      border-radius: 4px; 
-      font-family: monospace; 
-      word-break: break-all;
-      margin: 20px 0;
-    }
-    button {
-      background: #5c6ac4;
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    button:hover {
-      background: #4a5aad;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Fulfillment Backend</h1>
-    <p class="status">Server is running!</p>
-    
-    <h2>Get Your Access Token:</h2>
-    <button onclick="getToken()">Generate Access Token</button>
-    
-    <div id="token" style="display:none;">
-      <strong>Your Access Token:</strong><br>
-      <span id="tokenValue"></span>
-      <br><br>
-      <small>Copy this and add it to Railway as SHOPIFY_ACCESS_TOKEN</small>
-    </div>
-    
-    <div id="error" style="color: red; margin-top: 20px;"></div>
-  </div>
+  return {
+    status: "ok",
+    message: "Fulfillment API Server",
+    version: "1.0.0"
+  };
+});
   
   <script>
     const urlParams = new URLSearchParams(window.location.search);
