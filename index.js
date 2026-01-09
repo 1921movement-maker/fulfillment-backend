@@ -1385,6 +1385,92 @@ app.listen({
   host: "0.0.0.0",
 });
 
+/* ==============================
+   SHOP DATABASE OPERATIONS
+============================== */
+
+async function saveShop(shopData) {
+  const {
+    shop,
+    accessToken,
+    scope,
+    shopName,
+    email,
+    domain,
+    currency,
+    timezone,
+  } = shopData;
+
+  try {
+    const encryptedToken = encrypt(accessToken);
+
+    const query = `
+      INSERT INTO shops (
+        shop, 
+        access_token, 
+        scope, 
+        shop_name, 
+        email, 
+        domain, 
+        currency, 
+        timezone,
+        is_active,
+        installed_at,
+        last_updated
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW())
+      ON CONFLICT (shop) 
+      DO UPDATE SET
+        access_token = EXCLUDED.access_token,
+        scope = EXCLUDED.scope,
+        shop_name = EXCLUDED.shop_name,
+        email = EXCLUDED.email,
+        domain = EXCLUDED.domain,
+        currency = EXCLUDED.currency,
+        timezone = EXCLUDED.timezone,
+        is_active = true,
+        last_updated = NOW()
+      RETURNING *;
+    `;
+
+    const values = [
+      shop,
+      encryptedToken,
+      scope,
+      shopName || null,
+      email || null,
+      domain || null,
+      currency || null,
+      timezone || null,
+    ];
+
+    const result = await pool.query(query, values);
+    console.log(`✅ Shop saved: ${shop}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error saving shop:', error);
+    throw error;
+  }
+}
+
+async function getShop(shop) {
+  try {
+    const query = 'SELECT * FROM shops WHERE shop = $1 AND is_active = true';
+    const result = await pool.query(query, [shop]);
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const shopData = result.rows[0];
+    shopData.access_token = decrypt(shopData.access_token);
+
+    return shopData;
+  } catch (error) {
+    console.error('Error getting shop:', error);
+    throw error;
+  }
+}
 
 /* ==============================
    TEST ENDPOINT
